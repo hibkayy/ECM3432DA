@@ -1,35 +1,43 @@
 import {BrowserRouter as Router,Routes,Route,Navigate} from 'react-router-dom'
-import {use, useEffect, useState} from 'react'
-import './index.css'
+
+import Navbar from './components/Navbar';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import axios from 'axios';
+import "leaflet/dist/leaflet.css";
+import { useState, useEffect } from 'react';
 
 function App() {
-  const [user,setUser] = useState(null);
-  const [error,setError] = useState("");
+
+  const [user, setUser] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
+
     if (token) {
-      fetch("/api/user", {
+      axios.get("/api/user", {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
-      .then(response => response.json())
-      .then(data => {
-        setUser(data);
+      .then((response) => {
+        setUser(response.data);
       })
-      .catch(error => {
+      .catch((err) => {
         setError("Failed to fetch user data");
         localStorage.removeItem("token");
       });
     }
   }, []);
 
+
   return (
     <Router>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Navigate to="/home" />} />
+        <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
       </Routes>
