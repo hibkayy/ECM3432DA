@@ -1,12 +1,63 @@
 import { useEffect, useState } from 'react';
 import '../styles/Places.css';
 
+const RANK_TIERS = ['', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+
 const avgRating = (ratings) => {
     if (!ratings?.length) return null;
     return (ratings.reduce((sum, r) => sum + r.score, 0) / ratings.length).toFixed(1);
 };
 
-const Stars = ({ value }) => {
+const tierForStars = (score) => {
+    if (!score || score < 1 || score > 5) return null;
+    return RANK_TIERS[score];
+};
+
+const tierForAverage = (avgStr) => {
+    if (avgStr == null) return null;
+    const n = Math.round(parseFloat(avgStr));
+    if (n < 1 || n > 5) return null;
+    return RANK_TIERS[n];
+};
+
+const placeStats = (place) => {
+    const ratings = place.ratings || [];
+    const count = ratings.length;
+    const avg = count ? ratings.reduce((s, r) => s + r.score, 0) / count : null;
+    return { avg, count };
+};
+
+const sortPlacesByRankedRating = (list) => {
+    const withStats = list.map((p) => ({ ...p, ...placeStats(p) }));
+    withStats.sort((a, b) => {
+        const aRated = a.avg != null;
+        const bRated = b.avg != null;
+        if (aRated && !bRated) return -1;
+        if (!aRated && bRated) return 1;
+        if (!aRated && !bRated) return a.title.localeCompare(b.title);
+        if (b.avg !== a.avg) return b.avg - a.avg;
+        if (b.count !== a.count) return b.count - a.count;
+        return a.title.localeCompare(b.title);
+    });
+    let lastAvg = null;
+    let currentRank = 1;
+    let ratedPosition = 0;
+    return withStats.map((p) => {
+        if (p.avg == null) {
+            const { avg: _a, count: _c, ...rest } = p;
+            return { ...rest, leaderboardRank: null };
+        }
+        ratedPosition += 1;
+        if (lastAvg === null || Math.abs(p.avg - lastAvg) > 1e-9) {
+            currentRank = ratedPosition;
+        }
+        lastAvg = p.avg;
+        const { avg: _a, count: _c, ...rest } = p;
+        return { ...rest, leaderboardRank: currentRank };
+    });
+};
+
+const Stars = ({ value, tier }) => {
     const filled = Math.round(value);
     return (
         <span className="stars">
@@ -14,6 +65,7 @@ const Stars = ({ value }) => {
                 <span key={n} className={n <= filled ? 'star filled' : 'star'}>★</span>
             ))}
             <span className="rating-value">{value}/5</span>
+            {tier && <span className="rank-tier-label">{tier}</span>}
         </span>
     );
 };
@@ -27,7 +79,7 @@ const getGuestId = () => {
     return id;
 };
 
-const PlaceCard = ({ place }) => {
+const PlaceCard = ({ place, leaderboardRank }) => {
     const [comments, setComments] = useState(place.comments || []);
     const [ratings, setRatings] = useState(place.ratings || []);
     const [showComments, setShowComments] = useState(false);
@@ -40,6 +92,7 @@ const PlaceCard = ({ place }) => {
     const [selectedScore, setSelectedScore] = useState(existingRating?.score || 0);
 
     const avg = avgRating(ratings);
+    const avgTier = tierForAverage(avg);
 
     const submitComment = async (e) => {
         e.preventDefault();
@@ -77,8 +130,11 @@ const PlaceCard = ({ place }) => {
     return (
         <li className="place-card">
             <div className="place-header">
+                {leaderboardRank != null && (
+                    <span className="leaderboard-rank" title="Leaderboard rank by average rating">#{leaderboardRank}</span>
+                )}
                 <h3>{place.title}</h3>
-                {avg && <Stars value={avg} />}
+                {avg && <Stars value={avg} tier={avgTier} />}
             </div>
             <p>{place.description}</p>
             <div className="place-meta">
@@ -93,8 +149,12 @@ const PlaceCard = ({ place }) => {
                         key={n}
                         className={`star interactive ${n <= selectedScore ? 'filled' : ''}`}
                         onClick={() => submitRating(n)}
+                        title={tierForStars(n) ?? undefined}
                     >★</span>
                 ))}
+                {selectedScore > 0 && (
+                    <span className="your-rank-tier">{tierForStars(selectedScore)}</span>
+                )}
             </div>
 
             <button className="toggle-comments" onClick={() => setShowComments(v => !v)}>
@@ -139,14 +199,7 @@ const Places = () => {
                 if (!res.ok) throw new Error('Failed to fetch places');
                 return res.json();
             })
-            .then(data => {
-                data.sort((a, b) => {
-                    const aAvg = a.ratings?.length ? a.ratings.reduce((s, r) => s + r.score, 0) / a.ratings.length : 0;
-                    const bAvg = b.ratings?.length ? b.ratings.reduce((s, r) => s + r.score, 0) / b.ratings.length : 0;
-                    return bAvg - aAvg;
-                });
-                setPlaces(data);
-            })
+            .then(data => setPlaces(sortPlacesByRankedRating(data)))
             .catch(err => setError(err.message))
             .finally(() => setLoading(false));
     }, []);
@@ -157,11 +210,18 @@ const Places = () => {
     return (
         <div className="places-page">
             <h2>All Places</h2>
+            <p className="places-ranking-hint">Places are ordered by ranked average rating (ties share the same rank). Unrated places appear last.</p>
             {places.length === 0 ? (
                 <p className="places-status">No approved places yet.</p>
             ) : (
                 <ul className="places-list">
-                    {places.map(place => <PlaceCard key={place._id} place={place} />)}
+                    {places.map(place => (
+                        <PlaceCard
+                            key={place._id}
+                            place={place}
+                            leaderboardRank={place.leaderboardRank}
+                        />
+                    ))}
                 </ul>
             )}
         </div>
