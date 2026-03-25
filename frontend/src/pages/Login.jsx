@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import '../styles/Login.css';
 import axios from 'axios';
 
@@ -17,6 +17,7 @@ const Login = () => {
             });
 
             localStorage.setItem('token', res.data.token);
+            localStorage.setItem('isAdmin', res.data.isAdmin);
 
             window.location.href = "/";
         } catch (err) {
